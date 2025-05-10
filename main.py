@@ -3,7 +3,7 @@ import sys
 from scapy.arch.windows import get_windows_if_list
 
 from custom_logger import dpi_logger
-from encoder import forge_packet
+from stego_client import forge_packet
 
 iface_list = []
 
