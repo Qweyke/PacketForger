@@ -32,7 +32,8 @@ BYTE_LEN = 8
 BYTE_MASK = 0xFF
 
 CRC = bitarray("111010101")
-CRC_LEN = len(CRC)
+CRC_INT = ba2int(CRC)
+CRC_LEN = (len(CRC) - 1)
 
 HST_IP = "192.168.12.4"
 
@@ -55,7 +56,7 @@ def generate_magic_seq(byte_len: int):
 MAGIC_SEQ = generate_magic_seq(1)
 MAGIC_SEQ_LEN = len(MAGIC_SEQ.to_bytes()) * BYTE_LEN
 
-CRC4_FUNC = crcmod.mkCrcFun(ba2int(CRC), initCrc=0x0, rev=False, xorOut=0x0)
+CRC4_FUNC = crcmod.mkCrcFun(CRC_INT, initCrc=0x0, rev=False, xorOut=0x0)
 
 
 def search_for_ifaces():
@@ -86,7 +87,8 @@ def search_for_ifaces():
 
     dpi_logger.info("Enter interface number to sniff: ")
     iface_num_inp = input().strip()
-    return iface_list[int(iface_num_inp)]
+    return iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
+        int(iface_num_inp)]
 
 
 if __name__ == "__main__":

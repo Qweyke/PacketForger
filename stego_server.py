@@ -46,7 +46,7 @@ class StegoServer:
             conn.close()
 
     def _handle_stego_packet(self, packet: Packet):
-
+        dpi_logger.warning("PACKET DETECTED")
         if packet.haslayer(TCP):
             tcp_layer = packet.getlayer(TCP)
             seq_num = tcp_layer.seq

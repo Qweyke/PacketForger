@@ -6,7 +6,8 @@ from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import sendp
 
 from custom_logger import dpi_logger
-from session_info import Port, MAGIC_SEQ_LEN, CRC, TCP_HEADER_SEQ_LEN, CRC_LEN, HST_IP, SRV_IP, TcpFlag, CRC4_FUNC
+from session_info import Port, MAGIC_SEQ_LEN, TCP_HEADER_SEQ_LEN, CRC_LEN, HST_IP, SRV_IP, TcpFlag, CRC4_FUNC, \
+    search_for_ifaces, BYTE_LEN
 
 # 2^32
 MAX_TCP_SEQ_NUM = 1 << 32
@@ -31,15 +32,17 @@ class StegoClient:
         return bits_seq
 
     def _build_init_seq(self, stego_msg_len: bitarray) -> int | None:
-        if len(stego_msg_len) > TCP_HEADER_SEQ_LEN - MAGIC_SEQ_LEN - CRC:
+        if len(stego_msg_len) > TCP_HEADER_SEQ_LEN - MAGIC_SEQ_LEN - CRC_LEN:
+            dpi_logger.warning(f"stego len = {len(stego_msg_len)}")
             dpi_logger.warning("Msg is too long for one session")
             return
 
-        seq_base = (MAGIC_SEQ_LEN << (TCP_HEADER_SEQ_LEN - MAGIC_SEQ_LEN)) | (len(stego_msg_len) << CRC_LEN)
+        seq_base_int = (MAGIC_SEQ_LEN << (TCP_HEADER_SEQ_LEN - MAGIC_SEQ_LEN)) | (len(stego_msg_len) << CRC_LEN)
+        seq_base_bytes = seq_base_int.to_bytes(int(TCP_HEADER_SEQ_LEN / BYTE_LEN), "big")
 
-        crc_value = CRC4_FUNC(seq_base.tobytes())
+        crc_value = CRC4_FUNC(seq_base_bytes)
 
-        return seq_base | crc_value
+        return seq_base_int | crc_value
 
     # def _send_bit(self, bit: int):
     #
@@ -52,16 +55,16 @@ class StegoClient:
     #
     #     pass
 
-    def send_stego_msg(self, msg: str, net_iface_name: str):
-        self._iface = net_iface_name
+    def send_stego_msg(self, msg: str, srv_ip=SRV_IP):
+        self._iface = search_for_ifaces()
         self._curr_port = randrange(49152, 65535)
 
         # Count msg len and transmit it
         msg_len_seq = int2ba(len(msg.encode("utf-8")) * 8)
         init_seq = self._build_init_seq(msg_len_seq)
         if init_seq:
-            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP, seq=init_seq, flags=TcpFlag.SYN)
-            pkt = IP(src=HST_IP, dst=SRV_IP) / tcp_l
+            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=init_seq, flags=TcpFlag.SYN.value)
+            pkt = IP(src=HST_IP, dst=srv_ip) / tcp_l
             sendp(iface=self._iface, x=pkt)
 
         # # Transmit msg
@@ -69,4 +72,5 @@ class StegoClient:
 
 
 if __name__ == "__main__":
-    pass
+    clt = StegoClient()
+    clt.send_stego_msg("pipa", srv_ip="192.168.12.106")
