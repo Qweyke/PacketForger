@@ -36,11 +36,11 @@ class StegoClient:
         dpi_logger.info(f"Stego msg length: {msg_len_bits}")
 
         # Prepare all parts, by shifting bits to their places
-        magic_masked = MAGIC_SEQ << ((MSG_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
+        magic_masked = MAGIC_SEQ & 0xFFFF << ((MSG_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
         dpi_logger.warning(
             f"Magic masked: {magic_masked}, bits: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))} ")
 
-        msg_len_masked = ba2int(msg_len_bits) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
+        msg_len_masked = ba2int(msg_len_bits) & 0xFFFF << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
         dpi_logger.warning(
             f"Msg len masked: {msg_len_masked}, bits: {int2ba(msg_len_masked)}, len {len(int2ba(msg_len_masked))}")
 
