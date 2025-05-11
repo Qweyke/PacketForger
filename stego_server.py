@@ -7,16 +7,20 @@ from scapy.layers.inet import TCP
 from scapy.packet import Packet
 
 from custom_logger import dpi_logger
-from session_info import Port, HST_EXT_IP, TcpFlag, MAGIC_SEQ
+from session_info import Port, HST_EXT_IP, TcpFlag, MAGIC_SEQ, TCP_HEADER_SEQ_LEN, MAGIC_SEQ_LEN, CRC4_FUNC
 
 DATA_SIZE_IN_BYTES = 2048
-STEGO_HEAD_MSG_LEN = 16
 
 
 class StegoServer:
     def __init__(self):
         self._stego_active = False
         self._captured_bits = bitarray()
+
+        self._packet_cnt = 0
+        self._used_seqs = []
+
+        self._last_packet
         # self._active_session = ()
 
     def handle_client_conn(self, conn: socket.socket, addr: Any):
@@ -40,25 +44,54 @@ class StegoServer:
             conn.close()
 
     def handle_stego_packet(self, packet: Packet):
-        segments_cnt = 0
+
         if packet.haslayer(TCP):
             tcp_layer = packet.getlayer(TCP)
-            if tcp_layer.flags == TcpFlag.SYN.value and tcp_layer.seq == MAGIC_SEQ:
-                dpi_logger.warning("Hidden session request detected")
-                self._stego_active = True
+            seq_num = tcp_layer.seq
+
+            if seq_num in self._used_seqs:
+                dpi_logger.warning("Used seq handled")
+                return
+
+            if tcp_layer.flags == TcpFlag.SYN.value:
+                # seq_num &= 0xFFFFFFFF
+                # Get magic num
+                magic = (seq_num >> (TCP_HEADER_SEQ_LEN - MAGIC_SEQ_LEN)) & 0xFF
+                # Get len val
+                msg_len = (seq_num >> 8) & 0xFFFF
+                # Crc is in the end already
+                crc = seq_num & 0xFF
+                if crc == CRC4_FUNC(magic | msg_len):
+                    if magic == MAGIC_SEQ:
+                        dpi_logger.warning("Hidden session request detected")
+                        self._used_seqs.append(MAGIC_SEQ)
+                        self._packet_cnt += 1
+                        self._stego_active = True
 
             elif self._stego_active and tcp_layer.flags & TcpFlag.PSH.value:
-                bit = packet[TCP].seq & 1
+
+                self._used_seqs.append(seq_num)
+                bit = seq_num & 1
                 self._captured_bits.append(bit)
-                # Check receiv
+
+                self._packet_cnt += 1
+
+                # Assemble header of hidden msg first
                 if len(self._captured_bits) >= STEGO_HEAD_MSG_LEN:
-                    length = int(''.join(self.captured_bits[:16]), 2)
-                    if len(self.captured_bits) >= 16 + length:
-                        decrypted_bits = self.decrypt_bits(''.join(self.captured_bits), "secret")
-                        message = self.bits_to_text(decrypted_bits[16:16 + length])
+                    dpi_logger.info(f"Header assembled: {self._captured_bits[:16].to01()}")
+                    dpi_logger.info(f"Data body: {self._captured_bits[16:].to01()}")
+                    if len(self._captured_bits) >= STEGO_HEAD_MSG_LEN + int(self._captured_bits[16:].tobytes()):
+                        # decrypted_bits = self.decrypt_bits(''.join(self.captured_bits), "secret")
+                        message = self._captured_bits[16:].tobytes().decode("utf-8")
                         print(f"Extracted message: {message}")
-                        self.stego_active = False
-                        self.captured_bits = []
+
+                        self._stego_active = False
+                        self._captured_bits = bitarray()
+                        self._used_seqs.clear()
+                        self._packet_cnt = 0
+
+                else:
+                    dpi_logger.info(f"Assembling header, current bits gathered: {self._captured_bits.to01()}")
 
         else:
             dpi_logger.debug("Corrupted packet")
