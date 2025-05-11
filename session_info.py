@@ -87,8 +87,10 @@ def search_for_ifaces():
 
     dpi_logger.info("Enter interface number to sniff: ")
     iface_num_inp = input().strip()
-    return iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
+    iface_to_return = iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
         int(iface_num_inp)]
+
+    return iface_to_return
 
 
 if __name__ == "__main__":
