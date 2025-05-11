@@ -137,12 +137,11 @@ class StegoServer:
 
     def start_sniffing(self, src_ip: str = "0.0.0.0", dst_ip: str = "0.0.0.0"):
         iface = search_for_ifaces()
+        dpi_logger.info("Stego server is listening * * *")
         sniff(iface=iface,
               filter=f"port 80 and src host {src_ip} and dst host {dst_ip}",
               prn=self._handle_stego_packet,
               store=False)
-        
-        dpi_logger.info("Stego server is listening * * *")
 
         # def sniff_fun():
         #     try:

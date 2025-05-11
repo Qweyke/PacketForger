@@ -45,7 +45,10 @@ class StegoClient:
 
         dpi_logger.warning(f"CRC: {crc_int}")
 
-        return magic_masked | msg_len_masked | crc_int
+        full_seq = magic_masked | msg_len_masked | crc_int
+        dpi_logger.warning(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}")
+
+        return
 
     # def _send_bit(self, bit: int):
     #
