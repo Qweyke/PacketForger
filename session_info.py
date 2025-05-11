@@ -37,14 +37,16 @@ class TcpFlag(Enum):
     CWR = 0x80
 
 
-MSG_LEN_BYTE = 16
-TCP_HEADER_SEQ_LEN_BYTE = 4
+MSG_LEN_BYTE = 2
+TCP_SEQ_LEN_BYTE = 4
+CRC_LEN_BYTE = 2
+
 BYTE_LEN_IN_BITS = 8
 
 CRC = bitarray("111010101")
 CRC_INT = ba2int(CRC)
 # Must be changed for diff CRC type
-CRC_LEN_BYTE = BYTE_LEN_IN_BITS
+
 
 MAGIC_SEQ = generate_magic_seq(1)
 MAGIC_LEN_BYTE = len(MAGIC_SEQ.to_bytes())
