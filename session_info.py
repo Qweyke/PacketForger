@@ -37,7 +37,7 @@ class TcpFlag(Enum):
     CWR = 0x80
 
 
-MAX_HEADER_LEN_BYTE = 2
+MSG_LEN_BYTE = 16
 TCP_HEADER_SEQ_LEN_BYTE = 4
 BYTE_LEN_IN_BITS = 8
 

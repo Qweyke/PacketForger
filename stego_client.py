@@ -6,8 +6,8 @@ from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import send
 
 from custom_logger import dpi_logger
-from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, TCP_HEADER_SEQ_LEN_BYTE, MAGIC_LEN_BYTE, \
-    CRC_LEN_BYTE
+from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, MAGIC_LEN_BYTE, \
+    CRC_LEN_BYTE, MSG_LEN_BYTE
 
 # 2^32
 MAX_TCP_SEQ_NUM = 1 << 32
@@ -28,21 +28,19 @@ class StegoClient:
         print(bits_seq.to01())
         return bits_seq
 
-    def _build_init_seq(self, stego_msg_len: bitarray) -> int | None:
-        msg_len_byte = int(len(stego_msg_len) / BYTE_LEN_IN_BITS)
+    def _build_init_seq(self, msg_len_bits: bitarray) -> int | None:
+        # if len(msg_len_bits) > TCP_HEADER_SEQ_LEN_BYTE - MAGIC_LEN_BYTE - CRC_LEN_BYTE:
+        #     dpi_logger.warning("Msg is too long for one session. Aborting transmission")
+        #     return
 
-        if msg_len_byte > TCP_HEADER_SEQ_LEN_BYTE - MAGIC_LEN_BYTE - CRC_LEN_BYTE:
-            dpi_logger.warning("Msg is too long for one session. Aborting transmission")
-            return
-
-        dpi_logger.info(f"Stego msg length: {msg_len_byte}")
+        dpi_logger.info(f"Stego msg length: {msg_len_bits}")
 
         # Prepare all parts, by shifting bits to their places
         magic_masked = MAGIC_SEQ << ((MAGIC_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
-        msg_len_masked = ba2int(stego_msg_len) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
+        msg_len_masked = ba2int(msg_len_bits) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
 
         # Calculate CRC for base sequence, no shift needed
-        magic_len_in_bytes = (magic_masked | msg_len_masked).to_bytes(MAGIC_LEN_BYTE + msg_len_byte, "big")
+        magic_len_in_bytes = (magic_masked | msg_len_masked).to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big")
         crc_int = CRC8_FUNC(magic_len_in_bytes)
 
         dpi_logger.warning(f"CRC: {crc_int}")
@@ -65,8 +63,9 @@ class StegoClient:
         self._curr_port = randrange(49152, 65535)
 
         # Count msg len and transmit it
-        msg_len_seq = int2ba(len(msg.encode("utf-8")) * 8)
-        init_seq = self._build_init_seq(msg_len_seq)
+        msg_len_bits = int2ba(len(msg.encode("utf-8")) * 8, length=16, endian="big")
+        init_seq = self._build_init_seq(msg_len_bits)
+
         if init_seq:
             tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=init_seq, flags=TcpFlag.SYN.value)
             # Concatenate layers
