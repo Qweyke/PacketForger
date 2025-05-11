@@ -37,16 +37,18 @@ class StegoClient:
 
         # Prepare all parts, by shifting bits to their places
         magic_masked = MAGIC_SEQ << ((MAGIC_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
-        dpi_logger.warning(f"Magic masked: {magic_masked}, bits: {int2ba(magic_masked)}")
+        dpi_logger.warning(
+            f"Magic masked: {magic_masked}, bits: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))} ")
 
         msg_len_masked = ba2int(msg_len_bits) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
-        dpi_logger.warning(f"Msg len masked: {msg_len_masked}, bits: {int2ba(msg_len_masked)}")
+        dpi_logger.warning(
+            f"Msg len masked: {msg_len_masked}, bits: {int2ba(msg_len_masked)}, len {len(int2ba(msg_len_masked))}")
 
         # Calculate CRC for base sequence, no shift needed
         magic_len_in_bytes = (magic_masked | msg_len_masked).to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big")
         crc_int = CRC8_FUNC(magic_len_in_bytes)
 
-        dpi_logger.warning(f"CRC: {crc_int}, bits {int2ba(crc_int)}")
+        dpi_logger.warning(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
         full_seq = magic_masked | msg_len_masked | crc_int
         dpi_logger.warning(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}")
