@@ -127,7 +127,7 @@ class StegoServer:
     def start_sniffing(self):
         dpi_logger.info("Stego server is listening * * *")
         iface = search_for_ifaces()
-        iface_name = iface.get('name')
+        iface_name = iface
 
         def sniff_fun():
             sniff(iface=iface_name,
