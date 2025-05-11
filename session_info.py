@@ -9,6 +9,17 @@ from crcmod import crcmod
 from custom_logger import dpi_logger
 
 
+def generate_magic_seq(byte_len: int):
+    test = 233
+    random_bytes = os.urandom(byte_len)
+    # To big endian int
+    magic_seq = int.from_bytes(random_bytes, byteorder='big')
+    dpi_logger.debug(f"Seq seed is: {magic_seq}")
+    dpi_logger.debug(f"Seq test seed is: {test}")
+
+    return test
+
+
 class Port(Enum):
     HTTP = 80
     HTTPS = 443
@@ -26,37 +37,19 @@ class TcpFlag(Enum):
     CWR = 0x80
 
 
-MAX_HEADER_LEN = 16
-TCP_HEADER_SEQ_LEN = 32
-BYTE_LEN = 8
-BYTE_MASK = 0xFF
+MAX_HEADER_LEN_BYTE = 2
+TCP_HEADER_SEQ_LEN_BYTE = 4
+BYTE_LEN_IN_BITS = 8
 
 CRC = bitarray("111010101")
 CRC_INT = ba2int(CRC)
-CRC_LEN = (len(CRC) - 1)
+# Must be changed for diff CRC type
+CRC_LEN_BYTE = BYTE_LEN_IN_BITS
 
-HST_IP = "192.168.12.4"
-
-SRV_IP = "192.168.12.14"
-CLT_IP = "192.168.12.13"
-
-
-def generate_magic_seq(byte_len: int):
-    test = 233
-    random_bytes = os.urandom(byte_len)
-    # To big endian int
-    magic_seq = int.from_bytes(random_bytes, byteorder='big')
-    dpi_logger.debug(f"Seq seed is: {magic_seq}")
-    dpi_logger.debug(f"Seq test seed is: {test}")
-
-    return test
-
-
-# Cunning number for steganograpy transmission
 MAGIC_SEQ = generate_magic_seq(1)
-MAGIC_SEQ_LEN = len(MAGIC_SEQ.to_bytes()) * BYTE_LEN
+MAGIC_LEN_BYTE = len(MAGIC_SEQ.to_bytes())
 
-CRC4_FUNC = crcmod.mkCrcFun(CRC_INT, initCrc=0x0, rev=False, xorOut=0x0)
+CRC8_FUNC = crcmod.mkCrcFun(CRC_INT, initCrc=0x0, rev=False, xorOut=0x0)
 
 
 def search_for_ifaces():
@@ -89,6 +82,8 @@ def search_for_ifaces():
     iface_num_inp = input().strip()
     iface_to_return = iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
         int(iface_num_inp)]
+
+    print(iface_to_return)
 
     return iface_to_return
 
