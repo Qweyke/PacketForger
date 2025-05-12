@@ -3,14 +3,12 @@ from random import randrange
 from bitarray import bitarray
 from bitarray.util import int2ba
 from scapy.layers.inet import IP, TCP
-from scapy.sendrecv import send
+from scapy.sendrecv import send, sniff
 
 from custom_logger import dpi_logger
 from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MSG_LEN_BYTE, \
     MAGIC_LEN_BYTE
 
-# 2^32
-MAX_TCP_SEQ_NUM = 1 << 32
 MAX_MSG_SIZE = (1 << 16) - 1
 # 1111 1110
 LSB_MASK = int(~1)
@@ -22,6 +20,12 @@ class StegoClient:
         self._iface = None
         self._curr_port = None
 
+        self._src = None
+        self._dst = None
+
+        self._seq = None
+        self._ack = None
+
     def _generate_bits(self, msg: str) -> bitarray:
         bytes_seq = bytearray(msg, encoding="utf-8")
         bits_seq = bitarray()
@@ -30,12 +34,13 @@ class StegoClient:
         return bits_seq
 
     def _build_init_seq(self, msg: str) -> int | None:
+
         msg_len_in_bits = len(msg.encode("utf-8")) * BYTE_LEN_IN_BITS
         dpi_logger.info(f"Preparing to transmit message '{msg}' of length {msg_len_in_bits} bit")
 
         if msg_len_in_bits > MAX_MSG_SIZE:
             dpi_logger.warning("Message is too long for one transmission. Aborting...")
-            return
+            return False
 
         # Shift magic num bits to it's place in first 8 bits
         magic_masked = MAGIC_SEQ << (MSG_LEN_BYTE * BYTE_LEN_IN_BITS)
@@ -66,19 +71,49 @@ class StegoClient:
     #
     #     pass
 
+    def _wait_for_init_ack(self):
+        timeout = 3
+
+        def is_synack_reply(packet):
+            if (
+                    packet.haslayer(TCP)
+                    and packet.haslayer(IP)
+                    and packet[IP].src == self._dst
+                    and packet[IP].dst == self._src
+                    and packet[TCP].sport == Port.HTTP.value
+                    and packet[TCP].dport == self._curr_port
+                    and packet[TCP].flags == TcpFlag.SYN.value | TcpFlag.ACK.value
+                    and packet[TCP].ack == self._seq + 1
+            ): return True
+
+        # ждём 1 SYN-ACK от сервера
+        response = sniff(lfilter=is_synack_reply, count=1, timeout=timeout)
+
+        if response:
+            pkt = response[0]
+            dpi_logger.info(f"Got SYN-ACK. SEQ = {pkt[TCP].seq}, ACK = {pkt[TCP].ack}")
+
+
+        else:
+            dpi_logger.error(f"ACK from server wasn't received after timeout {timeout}")
+
     def send_stego_msg(self, msg: str, src_ip: str, dst_ip: str):
+        self._src = src_ip
+        self._dst = dst_ip
         # self._iface = search_for_ifaces()
         self._curr_port = randrange(49152, 65535)
 
         # Count msg len and transmit it as bit seq-s
         init_seq = self._build_init_seq(msg)
-
         if init_seq:
-            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=init_seq, flags=TcpFlag.SYN.value)
+            self._seq = init_seq
+            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, flags=TcpFlag.SYN.value)
             # Concatenate layers
-            pkt = IP(src=src_ip, dst=dst_ip) / tcp_l
+            init_pkt = IP(src=src_ip, dst=dst_ip) / tcp_l
             # Send pack from layer 3
-            send(pkt)
+            send(init_pkt)
+
+        self._wait_for_init_ack()
 
         # # Transmit msg
         # msg_bits_seq = self._generate_bits(msg)
