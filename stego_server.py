@@ -1,4 +1,5 @@
 import socket
+import socket
 import threading
 from random import randint
 from typing import Any
@@ -8,13 +9,14 @@ from bitarray.util import int2ba
 from scapy.all import sniff
 from scapy.config import conf
 from scapy.layers.inet import TCP, IP
+from scapy.layers.l2 import Ether
 from scapy.packet import Packet
-from scapy.sendrecv import send
+from scapy.sendrecv import sendp
 
 from custom_logger import dpi_logger
 from session_info import Port, TcpFlag, MAGIC_SEQ, \
     search_for_ifaces, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MAGIC_LEN_BYTE, \
-    MSG_LEN_BYTE
+    MSG_LEN_BYTE, get_target_mac
 
 conf.debug_dissector = 2
 
@@ -103,8 +105,9 @@ class StegoServer:
                     seq=self._server_seq,
                     ack=seq_num + 1
                 )
-                sa_pkt = ip_l / tcp_l
-                send(sa_pkt)
+                mac = get_target_mac(self._clt_ip)
+                sa_pkt = Ether(dst=mac) / ip_l / tcp_l
+                sendp(sa_pkt)
 
             else:
                 dpi_logger.error("CRC is incorrect. Transmission rejected")

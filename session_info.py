@@ -1,10 +1,14 @@
 import os
 import platform
+import re
 from enum import Enum
 
 from bitarray import bitarray
 from bitarray.util import ba2int
 from crcmod import crcmod
+from scapy.config import conf
+from scapy.layers.l2 import Ether, ARP
+from scapy.sendrecv import srp
 
 from custom_logger import dpi_logger
 
@@ -18,6 +22,59 @@ def generate_magic_seq(byte_len: int):
     dpi_logger.debug(f"Seq test seed is: {test}")
 
     return test
+
+
+# https://github.com/secdev/scapy/issues/4473
+def get_target_mac(dst_ip: str):
+    """Get the dest MAC for the IP."""
+    # First check if it's in our arp table
+    mac = None
+    dst_ip_re = re.compile(r"^.*" + re.escape(dst_ip) + r".*$", re.IGNORECASE)
+    with os.popen("arp -a") as fh:
+        lines = fh.read().splitlines()
+    for line in lines:
+        if dst_ip_re.match(line):
+            try:
+                mac = line.split()[1].strip().replace("-", ":")
+            except:
+                pass
+            break
+    if mac:
+        return mac
+
+    default_gw = conf.route.route("0.0.0.0")[2]
+    arp = ARP(pdst=dst_ip)
+    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+    packet = ether / arp
+
+    attempt = 0
+    while attempt < 3:
+        try:
+            ans = srp(packet, timeout=2, verbose=False)[0]
+            mac = ans[0][1].hwsrc
+            return mac
+        except:
+            pass
+        attempt += 1
+
+    # Probably not on the LAN - Use gateway
+    arp = ARP(pdst=default_gw)
+    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+    packet = ether / arp
+
+    attempt = 0
+    while attempt < 3:
+        try:
+            ans = srp(packet, timeout=2, verbose=False)[0]
+            mac = ans[0][1].hwsrc
+            return mac
+        except:
+            pass
+        attempt += 1
+
+    # Unable to determine dest MAC
+    dpi_logger.warning(f"Unable to determine dest MAC for {dst_ip}. Using broadcast.")
+    return "ff:ff:ff:ff:ff:ff"
 
 
 class Port(Enum):

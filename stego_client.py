@@ -121,4 +121,4 @@ class StegoClient:
 
 if __name__ == "__main__":
     clt = StegoClient()
-    clt.send_stego_msg("pipa", src_ip="192.168.12.106", dst_ip="192.168.12.4")
+    clt.send_stego_msg("pipa", src_ip="192.168.12.4", dst_ip="192.168.12.14")
