@@ -1,7 +1,7 @@
 from random import randrange
 
 from bitarray import bitarray
-from bitarray.util import int2ba, ba2int
+from bitarray.util import int2ba
 from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import send
 
@@ -32,27 +32,18 @@ class StegoClient:
     def _build_init_seq(self, msg: str) -> int | None:
         msg_len_in_bits = len(msg.encode("utf-8")) * BYTE_LEN_IN_BITS
         dpi_logger.info(f"Preparing to transmit message '{msg}' of length {msg_len_in_bits} bit")
-        msg_len_bitarray = int2ba(msg_len_in_bits)
 
         if msg_len_in_bits > MAX_MSG_SIZE:
             dpi_logger.warning("Message is too long for one transmission. Aborting...")
             return
 
-        # Shift magic num bits to first 8 bits
+        # Shift magic num bits to it's place in first 8 bits
         magic_masked = MAGIC_SEQ << (MSG_LEN_BYTE * BYTE_LEN_IN_BITS)
         dpi_logger.debug(
             f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
 
-        # Shift msg_len num bits to middle 16 bits
-        msg_len_masked = ba2int(msg_len_bitarray) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
-        dpi_logger.debug(
-            f"Len converted: {int2ba(msg_len_masked)}, len {len(int2ba(msg_len_masked))}.  Len initial: {msg_len_bitarray}, len {len(msg_len_bitarray)}")
-
-        # base_seq_in_bits = int2ba(base_seq)
-        # dpi_logger.warning(f"base_seq converted: {base_seq_in_bits}, len {len(base_seq_in_bits)}")
-
         # Assemble first 8 and middle 16 bits
-        base_seq = magic_masked | msg_len_masked
+        base_seq = magic_masked | msg_len_in_bits
         # Calculate CRC for base sequence, no shift needed
         crc_int = CRC8_FUNC(base_seq.to_bytes(MSG_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
 
