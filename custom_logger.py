@@ -56,7 +56,7 @@ def get_dpi_logger(name: str = "dpi") -> DpiLogger:
 
 logging.setLoggerClass(DpiLogger)
 dpi_logger = get_dpi_logger()
-dpi_logger.setLevel(logging.DEBUG)
+dpi_logger.setLevel(PACKET_LEVEL)
 
 dpi_handler = logging.StreamHandler()
 dpi_handler.setFormatter(ColorFormatter(fmt="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))

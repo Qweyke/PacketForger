@@ -82,13 +82,15 @@ class StegoServer:
                 dpi_logger.debug(f"Magic num received: {magic_trimmed}")
 
                 if magic_trimmed == MAGIC_SEQ:
-                    dpi_logger.warning("* * * Stego channel request detected * * *")
+                    dpi_logger.packet("* * * Stego channel request detected * * *")
                     crc_calculated = CRC8_FUNC(seq_base.to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big"))
 
                     dpi_logger.debug(f"CRC received: {crc_received}, CRC calculated: {crc_calculated}")
                     if crc_calculated == crc_received:
-                        dpi_logger.packet(
+                        dpi_logger.debug(
                             f"CRC is correct. Accepting transmission of message with length {msg_len_trimmed}")
+                        dpi_logger.packet(
+                            f"Transmission started")
 
                         self._used_seqs.append(MAGIC_SEQ)
                         self._packet_cnt += 1
