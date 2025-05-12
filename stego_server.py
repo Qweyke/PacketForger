@@ -180,9 +180,11 @@ class StegoServer:
         self._srv_ip = dst_ip
         self._clt_ip = src_ip
         iface = search_for_ifaces()
-        dpi_logger.info(f"* * * Server is listening for hidden transmission on {iface} * * *")
+        filter_berk = f"port 80 and src host {src_ip} and dst host {dst_ip}"
+        dpi_logger.info(
+            f"* * * Server is listening for hidden transmission on '{iface}' with filter '{filter_berk}' * * *")
         sniff(iface=iface,
-              filter=f"port 80 and src host {src_ip} and dst host {dst_ip}",
+              filter=filter_berk,
               prn=self._handle_stego_packet,
               store=False)
 
