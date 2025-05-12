@@ -176,11 +176,11 @@ class StegoServer:
             server.close()
             dpi_logger.warning("\n[!] Server is down.")
 
-    def start_sniffing(self, src_ip: str = "0.0.0.0", dst_ip: str = "0.0.0.0"):
-        self._srv_ip = dst_ip
-        self._clt_ip = src_ip
+    def start_sniffing(self, clt_ip: str = "0.0.0.0", srv_ip: str = "0.0.0.0"):
+        self._srv_ip = srv_ip
+        self._clt_ip = clt_ip
         iface = search_for_ifaces()
-        filter_berk = f"port 80 and src host {src_ip} and dst host {dst_ip}"
+        filter_berk = f"port 80 and src host {self._clt_ip} and dst host {self._srv_ip}"
         dpi_logger.info(
             f"* * * Server is listening for hidden transmission on '{iface}' with filter '{filter_berk}' * * *")
         sniff(iface=iface,
@@ -199,5 +199,5 @@ class StegoServer:
 
 if __name__ == "__main__":
     srv = StegoServer()
-    srv.start_sniffing(src_ip="192.168.12.106", dst_ip="192.168.12.4")
+    srv.start_sniffing(clt_ip="192.168.12.106", srv_ip="192.168.12.4")
     # srv.start_server(host=HST_IP)

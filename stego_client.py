@@ -149,4 +149,4 @@ class StegoClient:
 
 if __name__ == "__main__":
     clt = StegoClient()
-    clt.send_stego_msg("hi", clt_ip="192.168.12.4", srv_ip="192.168.12.14")
+    clt.send_stego_msg("hi", clt_ip="192.168.12.106", srv_ip="192.168.12.4")
