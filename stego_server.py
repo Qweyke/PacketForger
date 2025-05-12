@@ -4,7 +4,7 @@ from random import randint
 from typing import Any
 
 from bitarray import bitarray
-from scapy.all import sniff
+from scapy.all import sniff, IP, TCP, Ether
 from scapy.config import conf
 from scapy.layers.inet import TCP, IP
 from scapy.layers.l2 import Ether
@@ -18,9 +18,7 @@ from session_info import Port, TcpFlag, MAGIC_SEQ, \
 
 conf.debug_dissector = 2
 
-# 2^32 - 1
 MAX_TCP_SEQ_NUM = (1 << 32) - 1
-
 DATA_SIZE_IN_BYTES = 2048
 
 
@@ -36,6 +34,7 @@ class StegoServer:
         self._clt_ip = None
         self._clt_port = None
         self._server_socket = None
+        self._last_ack = 0
 
     def _handle_client_conn(self, conn: socket.socket, addr: Any):
         dpi_logger.info(f"Connection received from {addr}")
@@ -74,7 +73,7 @@ class StegoServer:
                 self._clt_ip = src_ip
                 self._srv_ip = dst_ip
 
-                # Отправляем SYN-ACK через сокет
+                # Отправляем SYN-ACK
                 ip_l = IP(src=self._srv_ip, dst=self._clt_ip)
                 tcp_l = TCP(
                     sport=Port.HTTP.value,
@@ -85,9 +84,9 @@ class StegoServer:
                 )
                 mac = get_target_mac(self._clt_ip)
                 sa_pkt = Ether(dst=mac) / ip_l / tcp_l
-                sendp(sa_pkt, verbose=False)
-                dpi_logger.info("Sent SYN-ACK")
-                self._server_seq += 1
+                sendp(sa_pkt)
+                dpi_logger.info(f"Sent SYN-ACK: seq={self._server_seq}, ack={seq_num + 1}")
+                self._last_ack = seq_num + 1
             else:
                 dpi_logger.error("CRC incorrect, rejecting")
         else:
@@ -101,12 +100,10 @@ class StegoServer:
             src_ip = packet.getlayer(IP).src
             dst_ip = packet.getlayer(IP).dst
 
-            # Handle seen packets
             if seq_num in self._used_seqs:
                 dpi_logger.debug("Packet's TCP sequence already used, skipping...")
                 return
 
-            # Handle stego init packet
             if tcp_layer.flags == TcpFlag.SYN.value:
                 self._handle_transmission_init(seq_num=seq_num, sport=tcp_layer.sport, src_ip=src_ip, dst_ip=dst_ip)
 
@@ -117,7 +114,6 @@ class StegoServer:
                 self._packet_cnt += 1
                 dpi_logger.debug(f"Extracted bit: {extracted_bit}, packet count: {self._packet_cnt}")
 
-                # Send ACK to PSH
                 if tcp_layer.flags & TcpFlag.PSH.value:
                     ip_l = IP(src=self._srv_ip, dst=self._clt_ip)
                     tcp_l = TCP(
@@ -125,22 +121,56 @@ class StegoServer:
                         dport=self._clt_port,
                         flags="A",
                         seq=self._server_seq,
-                        ack=seq_num + len(tcp_layer.payload) + 1
+                        ack=seq_num + 1  # Увеличиваем ack для подтверждения PSH
                     )
                     mac = get_target_mac(self._clt_ip)
                     ack_pkt = Ether(dst=mac) / ip_l / tcp_l
-                    sendp(ack_pkt, verbose=False)
+                    sendp(ack_pkt)
+                    dpi_logger.debug(f"Sent ACK for PSH: seq={self._server_seq}, ack={seq_num + 1}")
                     self._server_seq += 1
+                    self._last_ack = seq_num + 1
 
                 if self._packet_cnt == self._msg_len:
                     msg_in_bytes = self._captured_bits.tobytes()
                     message = msg_in_bytes.decode('utf-8')
                     dpi_logger.info(f"Message received: {message}")
                     self._stego_active = False
+
+                    # Отправляем FIN для завершения соединения
+                    ip_l = IP(src=self._srv_ip, dst=self._clt_ip)
+                    tcp_l = TCP(
+                        sport=Port.HTTP.value,
+                        dport=self._clt_port,
+                        flags="FA",
+                        seq=self._server_seq,
+                        ack=self._last_ack
+                    )
+                    mac = get_target_mac(self._clt_ip)
+                    fin_pkt = Ether(dst=mac) / ip_l / tcp_l
+                    sendp(fin_pkt)
+                    dpi_logger.info("Sent FIN packet to close connection")
+
                     self._captured_bits = bitarray()
                     self._used_seqs.clear()
                     self._packet_cnt = 0
                     self._clt_port = None
+
+            elif tcp_layer.flags & TcpFlag.FIN.value:
+                # Подтверждаем FIN клиента
+                ip_l = IP(src=self._srv_ip, dst=self._clt_ip)
+                tcp_l = TCP(
+                    sport=Port.HTTP.value,
+                    dport=self._clt_port,
+                    flags="FA",
+                    seq=self._server_seq,
+                    ack=seq_num + 1
+                )
+                mac = get_target_mac(self._clt_ip)
+                fin_ack_pkt = Ether(dst=mac) / ip_l / tcp_l
+                sendp(fin_ack_pkt)
+                dpi_logger.info("Received FIN, sent FIN-ACK")
+                self._server_seq += 1
+
         else:
             dpi_logger.debug("Corrupted packet")
 
@@ -166,14 +196,13 @@ class StegoServer:
         self._srv_ip = srv_ip
         self._clt_ip = clt_ip
         iface = search_for_ifaces()
-
-        server_thread = threading.Thread(target=self.start_server, args=(self._srv_ip, Port.HTTP.value), daemon=True)
-        server_thread.start()
-
         filter_berk = f"port {Port.HTTP.value} and src host {self._clt_ip} and dst host {self._srv_ip}"
         dpi_logger.info(
             f"* * * Server is listening for hidden transmission on '{iface}' with filter '{filter_berk}' * * *")
-        # Начинаем sniffing
+
+        server_thread = threading.Thread(target=self.start_server, args=("192.168.12.4", Port.HTTP.value), daemon=True)
+        server_thread.start()
+
         sniff(iface=iface,
               filter=filter_berk,
               prn=self._handle_stego_packet,

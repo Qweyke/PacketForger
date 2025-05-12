@@ -32,19 +32,15 @@ class StegoClient:
             dpi_logger.warning("Message is too long for one transmission. Aborting...")
             return None
 
-        # Shift magic num bits to its place in first 8 bits
         magic_masked = MAGIC_SEQ << (MSG_LEN_BYTE * BYTE_LEN_IN_BITS)
         dpi_logger.debug(
             f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
 
-        # Assemble first 8 and middle 16 bits
         base_seq = magic_masked | msg_len_in_bits
-        # Calculate CRC for base sequence, no shift needed
-        crc_int = CRC8_FUNC(base_seq.to_bytes(MSG_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
+        crc_int = CRC8_FUNC(base_seq.to_bytes(MAGIC_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
 
         dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
-        # Assemble full init TCP sequence
         full_seq = (base_seq << CRC_LEN_BYTE * BYTE_LEN_IN_BITS) | crc_int
         dpi_logger.debug(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}, len {len(int2ba(full_seq))}")
 
@@ -67,40 +63,47 @@ class StegoClient:
                 return True
             return False
 
-        # Wait for server response
         response = sniff(lfilter=is_synack_reply, count=1, timeout=timeout)
 
         if response:
             pkt = response[0]
             dpi_logger.debug(f"Got SYN-ACK. SEQ = {pkt[TCP].seq}, ACK = {pkt[TCP].ack}")
-
+            self._ack = pkt[TCP].seq + 1
             self._seq += 1
-            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, ack=pkt[TCP].seq + 1,
+            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, ack=self._ack,
                         flags=TcpFlag.ACK.value)
             ack_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
             send(ack_pkt)
+            dpi_logger.debug(f"Sent ACK: seq={self._seq}, ack={self._ack}")
             return True
         else:
             dpi_logger.error(f"ACK from server wasn't received after timeout '{timeout}' secs")
             return False
 
+    def _send_fin(self):
+        tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, ack=self._ack,
+                    flags=TcpFlag.FIN.value | TcpFlag.ACK.value)
+        fin_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
+        send(fin_pkt)
+        dpi_logger.info("Sent FIN packet to close connection")
+
     def send_stego_msg(self, msg: str, clt_ip: str, srv_ip: str):
         self._clt = clt_ip
         self._srv = srv_ip
-        self._curr_port = randrange(49152, 65535)
-
-        # Создаём сокет и привязываем его к порту
+        self._curr_port = None
         self._client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            self._client_socket.bind((self._clt, self._curr_port))
-            dpi_logger.info(f"Client bound to {self._clt}:{self._curr_port}")
-        except Exception as e:
-            dpi_logger.error(f"Failed to bind client socket to {self._clt}:{self._curr_port}: {e}")
-            self._client_socket.close()
-            return
 
-        # Count msg len and transmit it as bit seq-s
+        # Цикл для поиска свободного порта
+        while True:
+            self._curr_port = randrange(49152, 65535)
+            try:
+                self._client_socket.bind((self._clt, self._curr_port))
+                dpi_logger.info(f"Client bound to {self._clt}:{self._curr_port}")
+                break
+            except Exception as e:
+                dpi_logger.warning(f"Port {self._curr_port} is in use, trying another: {e}")
+
         init_seq = self._build_init_seq(msg)
         if init_seq is None:
             self._client_socket.close()
@@ -118,7 +121,7 @@ class StegoClient:
             bits_seq.frombytes(msg.encode("utf-8"))
 
             for i, bit in enumerate(bits_seq):
-                self._seq += i * 2
+                self._seq += 1  # Увеличиваем seq для каждого пакета
                 if bit == 1:
                     self._seq |= bit
                 else:
@@ -126,9 +129,13 @@ class StegoClient:
 
                 tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq,
                             flags=TcpFlag.PSH.value | TcpFlag.ACK.value)
-                init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
+                # Добавляем фиктивную нагрузку
+                init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l / "ping"
                 send(init_pkt)
                 dpi_logger.debug(f"Sent bit {bit} with seq {self._seq}")
+
+            # Завершаем соединение
+            self._send_fin()
 
         self._client_socket.close()
         dpi_logger.info("Client socket closed")
