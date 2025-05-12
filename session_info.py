@@ -39,7 +39,7 @@ class TcpFlag(Enum):
 
 MSG_LEN_BYTE = 2
 TCP_SEQ_LEN_BYTE = 4
-CRC_LEN_BYTE = 2
+CRC_LEN_BYTE = 1
 
 BYTE_LEN_IN_BITS = 8
 

@@ -6,11 +6,12 @@ from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import send
 
 from custom_logger import dpi_logger
-from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, MAGIC_LEN_BYTE, \
-    CRC_LEN_BYTE, MSG_LEN_BYTE
+from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MSG_LEN_BYTE, \
+    TCP_SEQ_LEN_BYTE
 
 # 2^32
 MAX_TCP_SEQ_NUM = 1 << 32
+MAX_MSG_SIZE = (1 << 16) - 1
 # 1111 1110
 LSB_MASK = int(~1)
 
@@ -28,33 +29,40 @@ class StegoClient:
         print(bits_seq.to01())
         return bits_seq
 
-    def _build_init_seq(self, msg_len_bits: bitarray) -> int | None:
-        # if len(msg_len_bits) > TCP_HEADER_SEQ_LEN_BYTE - MAGIC_LEN_BYTE - CRC_LEN_BYTE:
-        #     dpi_logger.warning("Msg is too long for one session. Aborting transmission")
-        #     return
+    def _build_init_seq(self, msg: str) -> int | None:
+        msg_len_in_bits = len(msg.encode("utf-8")) * BYTE_LEN_IN_BITS
+        dpi_logger.info(f"Preparing to transmit message '{msg}' of length {msg_len_in_bits} bit")
+        msg_len_bitarray = int2ba(msg_len_in_bits)
 
-        dpi_logger.info(f"Stego msg length: {msg_len_bits}")
+        if msg_len_in_bits > MAX_MSG_SIZE:
+            dpi_logger.warning("Message is too long for one transmission. Aborting...")
+            return
 
-        # Prepare all parts, by shifting bits to their places
-        magic_masked = MAGIC_SEQ & 0xFFFF << ((MSG_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
-        dpi_logger.warning(
-            f"Magic masked: {magic_masked}, bits: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))} ")
+        # Shift magic num bits to first 8 bits
+        magic_masked = MAGIC_SEQ << ((MSG_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
+        dpi_logger.debug(
+            f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
 
-        msg_len_masked = ba2int(msg_len_bits) & 0xFFFF << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
-        dpi_logger.warning(
-            f"Msg len masked: {msg_len_masked}, bits: {int2ba(msg_len_masked)}, len {len(int2ba(msg_len_masked))}")
+        # Shift msg_len num bits to middle 16 bits
+        msg_len_masked = ba2int(msg_len_bitarray) << CRC_LEN_BYTE * BYTE_LEN_IN_BITS
+        dpi_logger.debug(
+            f"Len converted: {int2ba(msg_len_masked)}, len {len(int2ba(msg_len_masked))}.  Len initial: {msg_len_bitarray}, len {len(msg_len_bitarray)}")
 
+        # base_seq_in_bits = int2ba(base_seq)
+        # dpi_logger.warning(f"base_seq converted: {base_seq_in_bits}, len {len(base_seq_in_bits)}")
+
+        # Assemble first 8 and middle 16 bits
+        base_seq = magic_masked | msg_len_masked
         # Calculate CRC for base sequence, no shift needed
-        magic_len_in_bytes = (magic_masked | msg_len_masked).to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big")
-        crc_int = CRC8_FUNC(magic_len_in_bytes)
+        crc_int = CRC8_FUNC(base_seq.to_bytes(TCP_SEQ_LEN_BYTE, "big"))
 
-        dpi_logger.warning(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
+        dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
-        full_seq = magic_masked | msg_len_masked | crc_int
-        full_seq &= 0xFFFF
-        dpi_logger.warning(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}")
+        # Assemble full init TCP sequence
+        full_seq = base_seq | crc_int
+        dpi_logger.debug(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}, len {len(int2ba(full_seq))}")
 
-        return
+        return full_seq
 
     # def _send_bit(self, bit: int):
     #
@@ -71,9 +79,8 @@ class StegoClient:
         # self._iface = search_for_ifaces()
         self._curr_port = randrange(49152, 65535)
 
-        # Count msg len and transmit it
-        msg_len_bits = int2ba(len(msg.encode("utf-8")) * 8)
-        init_seq = self._build_init_seq(msg_len_bits)
+        # Count msg len and transmit it as bit seq-s
+        init_seq = self._build_init_seq(msg)
 
         if init_seq:
             tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=init_seq, flags=TcpFlag.SYN.value)

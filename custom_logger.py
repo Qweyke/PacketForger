@@ -36,10 +36,12 @@ class ColorFormatter(logging.Formatter):
         if not hasattr(record, "sub_lvl"):
             record.sub_lvl = "-"
 
-        if level == logging.INFO:
-            record.msg = f"{Fore.CYAN}{record.msg}{Style.RESET_ALL}"
-        elif level == logging.WARNING:
+        if level == logging.DEBUG:
             record.msg = f"{Fore.YELLOW}{record.msg}{Style.RESET_ALL}"
+        elif level == logging.INFO:
+            record.msg = f"{Fore.LIGHTMAGENTA_EX}{record.msg}{Style.RESET_ALL}"
+        elif level == logging.WARNING:
+            record.msg = f"{Fore.LIGHTYELLOW_EX}{record.msg}{Style.RESET_ALL}"
         elif level == logging.ERROR:
             record.msg = f"{Fore.RED}{record.msg}{Style.RESET_ALL}"
         elif level == PACKET_LEVEL:
