@@ -1,0 +1,4 @@
+scapy~=2.6.1
+bitarray~=3.4.0
+crcmod~=1.7
+colorama~=0.4.6
