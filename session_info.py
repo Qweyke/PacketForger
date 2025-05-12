@@ -24,61 +24,8 @@ def generate_magic_seq(byte_len: int):
     return test
 
 
-# https://github.com/secdev/scapy/issues/4473
-def get_target_mac(dst_ip: str):
-    """Get the dest MAC for the IP."""
-    # First check if it's in our arp table
-    mac = None
-    dst_ip_re = re.compile(r"^.*" + re.escape(dst_ip) + r".*$", re.IGNORECASE)
-    with os.popen("arp -a") as fh:
-        lines = fh.read().splitlines()
-    for line in lines:
-        if dst_ip_re.match(line):
-            try:
-                mac = line.split()[1].strip().replace("-", ":")
-            except:
-                pass
-            break
-    if mac:
-        return mac
-
-    default_gw = conf.route.route("0.0.0.0")[2]
-    arp = ARP(pdst=dst_ip)
-    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-    packet = ether / arp
-
-    attempt = 0
-    while attempt < 3:
-        try:
-            ans = srp(packet, timeout=2, verbose=False)[0]
-            mac = ans[0][1].hwsrc
-            return mac
-        except:
-            pass
-        attempt += 1
-
-    # Probably not on the LAN - Use gateway
-    arp = ARP(pdst=default_gw)
-    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-    packet = ether / arp
-
-    attempt = 0
-    while attempt < 3:
-        try:
-            ans = srp(packet, timeout=2, verbose=False)[0]
-            mac = ans[0][1].hwsrc
-            return mac
-        except:
-            pass
-        attempt += 1
-
-    # Unable to determine dest MAC
-    dpi_logger.warning(f"Unable to determine dest MAC for {dst_ip}. Using broadcast.")
-    return "ff:ff:ff:ff:ff:ff"
-
-
 class Port(Enum):
-    HTTP = 80
+    HTTP = 8080
     HTTPS = 443
     SSH = 22
 
@@ -143,6 +90,59 @@ def search_for_ifaces():
         int(iface_num_inp)]
 
     return iface_to_return
+
+
+# https://github.com/secdev/scapy/issues/4473
+def get_target_mac(dst_ip: str):
+    """Get the dest MAC for the IP."""
+    # First check if it's in our arp table
+    mac = None
+    dst_ip_re = re.compile(r"^.*" + re.escape(dst_ip) + r".*$", re.IGNORECASE)
+    with os.popen("arp -a") as fh:
+        lines = fh.read().splitlines()
+    for line in lines:
+        if dst_ip_re.match(line):
+            try:
+                mac = line.split()[1].strip().replace("-", ":")
+            except:
+                pass
+            break
+    if mac:
+        return mac
+
+    default_gw = conf.route.route("0.0.0.0")[2]
+    arp = ARP(pdst=dst_ip)
+    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+    packet = ether / arp
+
+    attempt = 0
+    while attempt < 3:
+        try:
+            ans = srp(packet, timeout=2, verbose=False)[0]
+            mac = ans[0][1].hwsrc
+            return mac
+        except:
+            pass
+        attempt += 1
+
+    # Probably not on the LAN - Use gateway
+    arp = ARP(pdst=default_gw)
+    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+    packet = ether / arp
+
+    attempt = 0
+    while attempt < 3:
+        try:
+            ans = srp(packet, timeout=2, verbose=False)[0]
+            mac = ans[0][1].hwsrc
+            return mac
+        except:
+            pass
+        attempt += 1
+
+    # Unable to determine dest MAC
+    dpi_logger.warning(f"Unable to determine dest MAC for {dst_ip}. Using broadcast.")
+    return "ff:ff:ff:ff:ff:ff"
 
 
 if __name__ == "__main__":

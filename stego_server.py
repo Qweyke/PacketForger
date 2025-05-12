@@ -93,7 +93,6 @@ class StegoServer:
                     f"Transmission started")
 
                 self._used_seqs.append(MAGIC_SEQ)
-                self._packet_cnt += 1
                 self._stego_active = True
                 self._msg_len = msg_len_trimmed
                 self._clt_port = sport
@@ -102,7 +101,7 @@ class StegoServer:
                 tcp_l = TCP(
                     sport=Port.HTTP.value,
                     dport=self._clt_port,
-                    flags=TcpFlag.SYN.value | TcpFlag.ACK.value,
+                    flags="SA",
                     seq=self._server_seq,
                     ack=seq_num + 1
                 )
@@ -138,7 +137,7 @@ class StegoServer:
                 self._packet_cnt += 1
 
                 # Assemble header of hidden msg first
-                if self._packet_cnt >= self._msg_len:
+                if self._packet_cnt == self._msg_len:
                     msg_in_bytes = self._captured_bits.tobytes()
                     message = msg_in_bytes.decode('utf-8')
                     dpi_logger.info(f"Message received: {message}")
@@ -183,11 +182,11 @@ class StegoServer:
         filter_berk = f"port 80 and src host {self._clt_ip} and dst host {self._srv_ip}"
         dpi_logger.info(
             f"* * * Server is listening for hidden transmission on '{iface}' with filter '{filter_berk}' * * *")
+
         sniff(iface=iface,
               filter=filter_berk,
               prn=self._handle_stego_packet,
               store=False)
-
         # def sniff_fun():
         #     try:
         #
@@ -200,4 +199,4 @@ class StegoServer:
 if __name__ == "__main__":
     srv = StegoServer()
     srv.start_sniffing(clt_ip="192.168.12.106", srv_ip="192.168.12.4")
-    # srv.start_server(host=HST_IP)
+    # srv.start_server(host="192.168.12.4")
