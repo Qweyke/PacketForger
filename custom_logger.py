@@ -1,4 +1,5 @@
 import logging
+from logging import DEBUG
 from typing import cast
 
 from colorama import init, Fore, Style
@@ -7,6 +8,8 @@ init(autoreset=True)
 
 PACKET_LEVEL = 15
 logging.addLevelName(PACKET_LEVEL, "PACKET")
+
+CURRENT_LVL = DEBUG
 
 
 class DpiLogger(logging.Logger):
@@ -56,7 +59,7 @@ def get_dpi_logger(name: str = "dpi") -> DpiLogger:
 
 logging.setLoggerClass(DpiLogger)
 dpi_logger = get_dpi_logger()
-dpi_logger.setLevel(PACKET_LEVEL)
+dpi_logger.setLevel(level=CURRENT_LVL)
 
 dpi_handler = logging.StreamHandler()
 dpi_handler.setFormatter(ColorFormatter(fmt="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))

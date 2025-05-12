@@ -20,18 +20,11 @@ class StegoClient:
         self._iface = None
         self._curr_port = None
 
-        self._src = None
-        self._dst = None
+        self._clt = None
+        self._srv = None
 
         self._seq = None
         self._ack = None
-
-    def _generate_bits(self, msg: str) -> bitarray:
-        bytes_seq = bytearray(msg, encoding="utf-8")
-        bits_seq = bitarray()
-        bits_seq.frombytes(bytes_seq)
-        print(bits_seq.to01())
-        return bits_seq
 
     def _build_init_seq(self, msg: str) -> int | None:
 
@@ -71,35 +64,52 @@ class StegoClient:
     #
     #     pass
 
-    def _wait_for_init_ack(self):
+    def _receive_init_syn_ack(self):
         timeout = 3
 
         def is_synack_reply(packet):
             if (
                     packet.haslayer(TCP)
                     and packet.haslayer(IP)
-                    and packet[IP].src == self._dst
-                    and packet[IP].dst == self._src
+                    and packet[IP].src == self._srv
+                    and packet[IP].dst == self._clt
                     and packet[TCP].sport == Port.HTTP.value
                     and packet[TCP].dport == self._curr_port
                     and packet[TCP].flags == TcpFlag.SYN.value | TcpFlag.ACK.value
                     and packet[TCP].ack == self._seq + 1
             ): return True
 
-        # ждём 1 SYN-ACK от сервера
+        # Wait for srv response
         response = sniff(lfilter=is_synack_reply, count=1, timeout=timeout)
 
         if response:
             pkt = response[0]
-            dpi_logger.info(f"Got SYN-ACK. SEQ = {pkt[TCP].seq}, ACK = {pkt[TCP].ack}")
+            dpi_logger.debug(f"Got SYN-ACK. SEQ = {pkt[TCP].seq}, ACK = {pkt[TCP].ack}")
 
+            self._seq += 1
+            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, ack=pkt[TCP].ack + 1,
+                        flags=TcpFlag.ACK.value)
+            # Concatenate layers
+            ack_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
+            # Send pack from layer 3
+            send(ack_pkt)
+            return True
 
         else:
-            dpi_logger.error(f"ACK from server wasn't received after timeout {timeout}")
+            dpi_logger.error(f"ACK from server wasn't received after timeout '{timeout}' secs")
+            return False
 
-    def send_stego_msg(self, msg: str, src_ip: str, dst_ip: str):
-        self._src = src_ip
-        self._dst = dst_ip
+    # def _start_transmission(self, msg):
+    #     self._seq = init_seq
+    #     tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, flags=TcpFlag.SYN.value)
+    #     # Concatenate layers
+    #     init_pkt = IP(src=src_ip, dst=dst_ip) / tcp_l
+    #     # Send pack from layer 3
+    #     send(init_pkt)
+
+    def send_stego_msg(self, msg: str, clt_ip: str, srv_ip: str):
+        self._clt = clt_ip
+        self._srv = srv_ip
         # self._iface = search_for_ifaces()
         self._curr_port = randrange(49152, 65535)
 
@@ -109,11 +119,29 @@ class StegoClient:
             self._seq = init_seq
             tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, flags=TcpFlag.SYN.value)
             # Concatenate layers
-            init_pkt = IP(src=src_ip, dst=dst_ip) / tcp_l
+            init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
             # Send pack from layer 3
             send(init_pkt)
 
-        self._wait_for_init_ack()
+        if self._receive_init_syn_ack():
+            dpi_logger.info("Start transmission!")
+            bits_seq = bitarray()
+            bits_seq.frombytes(msg.encode("utf-8"))
+
+            for i, bit in enumerate(bits_seq):
+                # Устанавливаем LSB в base_seq
+                self._seq += i * 2
+                if bit == 1:
+                    self._seq |= bit
+                else:
+                    self._seq &= ~1
+
+                tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq,
+                            flags=TcpFlag.PSH.value | TcpFlag.ACK.value)
+                # Concatenate layers
+                init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
+                # Send pack from layer 3
+                send(init_pkt)
 
         # # Transmit msg
         # msg_bits_seq = self._generate_bits(msg)
@@ -121,4 +149,4 @@ class StegoClient:
 
 if __name__ == "__main__":
     clt = StegoClient()
-    clt.send_stego_msg("pipa", src_ip="192.168.12.4", dst_ip="192.168.12.14")
+    clt.send_stego_msg("hi", clt_ip="192.168.12.4", srv_ip="192.168.12.14")

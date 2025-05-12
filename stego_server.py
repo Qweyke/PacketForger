@@ -60,6 +60,7 @@ class StegoServer:
             conn.close()
 
     def _handle_transmission_init(self, seq_num, sport):
+
         dpi_logger.debug(f"Sequence value: {seq_num}")
 
         # Shift sequence to get magic value
@@ -129,27 +130,23 @@ class StegoServer:
             if tcp_layer.flags == TcpFlag.SYN.value:
                 self._handle_transmission_init(seq_num=seq_num, sport=tcp_layer.sport)
 
-                # elif self._stego_active and tcp_layer.flags & TcpFlag.PSH.value:
-                #
-                #     self._used_seqs.append(seq_num)
-                #     bit = seq_num & 1
-                #     self._captured_bits.append(bit)
-                #
-                #     self._packet_cnt += 1
-                #
-                #     # Assemble header of hidden msg first
-                #     if len(self._captured_bits) >= STEGO_HEAD_MSG_LEN:
-                #         dpi_logger.info(f"Header assembled: {self._captured_bits[:16].to01()}")
-                #         dpi_logger.info(f"Data body: {self._captured_bits[16:].to01()}")
-                #         if len(self._captured_bits) >= STEGO_HEAD_MSG_LEN + int(self._captured_bits[16:].tobytes()):
-                #             # decrypted_bits = self.decrypt_bits(''.join(self.captured_bits), "secret")
-                #             message = self._captured_bits[16:].tobytes().decode("utf-8")
-                #             print(f"Extracted message: {message}")
-                #
-                #             self._stego_active = False
-                #             self._captured_bits = bitarray()
-                #             self._used_seqs.clear()
-                #             self._packet_cnt = 0
+            elif self._stego_active and (tcp_layer.flags == TcpFlag.ACK.value or tcp_layer.flags & TcpFlag.PSH.value):
+                self._used_seqs.append(seq_num)
+                extracted_bit = seq_num & 1
+                self._captured_bits.append(extracted_bit)
+
+                self._packet_cnt += 1
+
+                # Assemble header of hidden msg first
+                if self._packet_cnt >= self._msg_len:
+                    msg_in_bytes = self._captured_bits.tobytes()
+                    message = msg_in_bytes.decode('utf-8')
+                    dpi_logger.info(f"Message received: {message}")
+                    self._stego_active = False
+                    self._captured_bits = bitarray()
+                    self._used_seqs.clear()
+                    self._packet_cnt = 0
+
         else:
             dpi_logger.debug("Corrupted packet")
 
