@@ -25,7 +25,7 @@ def generate_magic_seq(byte_len: int):
 
 
 class Port(Enum):
-    HTTP = 8080
+    HTTP = 80
     HTTPS = 443
     SSH = 22
 

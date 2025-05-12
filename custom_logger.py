@@ -1,5 +1,4 @@
 import logging
-from logging import DEBUG
 from typing import cast
 
 from colorama import init, Fore, Style
@@ -9,7 +8,7 @@ init(autoreset=True)
 PACKET_LEVEL = 15
 logging.addLevelName(PACKET_LEVEL, "PACKET")
 
-CURRENT_LVL = DEBUG
+CURRENT_LVL = PACKET_LEVEL
 
 
 class DpiLogger(logging.Logger):
