@@ -39,7 +39,7 @@ class StegoClient:
             return
 
         # Shift magic num bits to first 8 bits
-        magic_masked = MAGIC_SEQ << ((MSG_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)
+        magic_masked = MAGIC_SEQ << (MSG_LEN_BYTE * BYTE_LEN_IN_BITS)
         dpi_logger.debug(
             f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
 
@@ -59,7 +59,7 @@ class StegoClient:
         dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
         # Assemble full init TCP sequence
-        full_seq = base_seq | crc_int
+        full_seq = (base_seq << CRC_LEN_BYTE * BYTE_LEN_IN_BITS) | crc_int
         dpi_logger.debug(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}, len {len(int2ba(full_seq))}")
 
         return full_seq
