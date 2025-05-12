@@ -3,6 +3,7 @@ import threading
 from typing import Any
 
 from bitarray import bitarray
+from bitarray.util import int2ba
 from scapy.all import sniff
 from scapy.config import conf
 from scapy.layers.inet import TCP
@@ -10,7 +11,8 @@ from scapy.packet import Packet
 
 from custom_logger import dpi_logger
 from session_info import Port, TcpFlag, MAGIC_SEQ, \
-    search_for_ifaces, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MAGIC_LEN_BYTE, TCP_HEADER_SEQ_LEN_BYTE
+    search_for_ifaces, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MAGIC_LEN_BYTE, \
+    MSG_LEN_BYTE
 
 conf.debug_dissector = 2
 
@@ -48,38 +50,52 @@ class StegoServer:
 
     def _handle_stego_packet(self, packet: Packet):
         if packet.haslayer(TCP):
+            dpi_logger.debug("Received a packet")
             tcp_layer = packet.getlayer(TCP)
             seq_num = tcp_layer.seq
 
+            # Handle seen packets
             if seq_num in self._used_seqs:
-                dpi_logger.warning("Used seq handled")
+                dpi_logger.debug("Packet's TCP sequence already used, skipping... ")
                 return
 
+            # Handle stego init packet
             if tcp_layer.flags == TcpFlag.SYN.value:
-                # seq_num &= 0xFFFFFFFF
-                # Get magic num
-                magic = (seq_num >> ((MAGIC_LEN_BYTE + CRC_LEN_BYTE) * BYTE_LEN_IN_BITS)) & 0xFF
-                # Get len val
-                msg_len = (seq_num >> (CRC_LEN_BYTE * BYTE_LEN_IN_BITS)) & 0xFFFF
-                # Crc is in the end already
-                crc = seq_num & 0xFF
+                dpi_logger.debug(f"Sequence value: {seq_num}")
 
-                dpi_logger.info(f"Magic num: {magic}")
-                seq_bytes = seq_num.to_bytes(TCP_HEADER_SEQ_LEN_BYTE, "big")
+                # Shift sequence to get magic value
+                magic_trimmed = seq_num >> ((MAGIC_LEN_BYTE + MSG_LEN_BYTE) * BYTE_LEN_IN_BITS) & 0xFF
+                dpi_logger.debug(f"magic converted: {int2ba(magic_trimmed)}, len {len(int2ba(magic_trimmed))}.")
 
-                if magic == MAGIC_SEQ:
-                    dpi_logger.warning("Hidden session request detected")
-                    crc_output = CRC8_FUNC(seq_bytes)
-                    dpi_logger.info(f"CRC: {crc_output}")
-                    if crc_output == 0:
-                        dpi_logger.warning("CRC correct")
+                # Shift sequence to get msg_len value
+                msg_len_trimmed = (seq_num >> (CRC_LEN_BYTE * BYTE_LEN_IN_BITS)) & 0xFFFF
+                dpi_logger.debug(f"len converted: {int2ba(msg_len_trimmed)}, len {len(int2ba(msg_len_trimmed))}.")
+
+                seq_base = (seq_num >> CRC_LEN_BYTE * BYTE_LEN_IN_BITS) & 0xFFFFFF
+                dpi_logger.debug(f"seq base converted: {int2ba(seq_base)}, len {len(int2ba(seq_base))}.")
+
+                dpi_logger.debug(f"seq num converted: {int2ba(seq_num)}, len {len(int2ba(seq_num))}.")
+
+                # CRC already in last 8 bits
+                crc_received = seq_num & 0xFF
+
+                dpi_logger.debug(f"Magic num received: {magic_trimmed}")
+
+                if magic_trimmed == MAGIC_SEQ:
+                    dpi_logger.warning("* * * Stego channel request detected * * *")
+                    crc_calculated = CRC8_FUNC(seq_base.to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big"))
+
+                    dpi_logger.info(f"CRC received: {crc_received}, CRC calculated: {crc_calculated}")
+                    if crc_calculated == crc_received:
+                        dpi_logger.warning(
+                            f"CRC is correct. Accepting transmission of message with length {msg_len_trimmed}")
+
                         self._used_seqs.append(MAGIC_SEQ)
                         self._packet_cnt += 1
                         self._stego_active = True
-                        self._msg_len = msg_len
-                        dpi_logger.info(f"Msg len: {self._msg_len}")
+                        self._msg_len = msg_len_trimmed
                     else:
-                        dpi_logger.error("CRC incorrect")
+                        dpi_logger.error("CRC is incorrect. Transmission rejected")
 
                 # elif self._stego_active and tcp_layer.flags & TcpFlag.PSH.value:
                 #
@@ -104,7 +120,7 @@ class StegoServer:
                 #             self._packet_cnt = 0
 
                 else:
-                    dpi_logger.warning(f"No magic seq")
+                    dpi_logger.debug(f"Packet with no magic sequence")
 
         else:
             dpi_logger.debug("Corrupted packet")
@@ -137,7 +153,7 @@ class StegoServer:
 
     def start_sniffing(self, src_ip: str = "0.0.0.0", dst_ip: str = "0.0.0.0"):
         iface = search_for_ifaces()
-        dpi_logger.info("Stego server is listening * * *")
+        dpi_logger.info(f"* * * Server is listening for hidden transmission on {iface} * * *")
         sniff(iface=iface,
               filter=f"port 80 and src host {src_ip} and dst host {dst_ip}",
               prn=self._handle_stego_packet,

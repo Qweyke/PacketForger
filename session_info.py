@@ -85,8 +85,6 @@ def search_for_ifaces():
     iface_to_return = iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
         int(iface_num_inp)]
 
-    print(iface_to_return)
-
     return iface_to_return
 
 

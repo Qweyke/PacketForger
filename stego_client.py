@@ -7,7 +7,7 @@ from scapy.sendrecv import send
 
 from custom_logger import dpi_logger
 from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MSG_LEN_BYTE, \
-    TCP_SEQ_LEN_BYTE
+    MAGIC_LEN_BYTE
 
 # 2^32
 MAX_TCP_SEQ_NUM = 1 << 32
@@ -54,7 +54,7 @@ class StegoClient:
         # Assemble first 8 and middle 16 bits
         base_seq = magic_masked | msg_len_masked
         # Calculate CRC for base sequence, no shift needed
-        crc_int = CRC8_FUNC(base_seq.to_bytes(TCP_SEQ_LEN_BYTE, "big"))
+        crc_int = CRC8_FUNC(base_seq.to_bytes(MSG_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
 
         dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
