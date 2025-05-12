@@ -37,7 +37,7 @@ class StegoClient:
             f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
 
         base_seq = magic_masked | msg_len_in_bits
-        crc_int = CRC8_FUNC(base_seq.to_bytes(MAGIC_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
+        crc_int = CRC8_FUNC(base_seq.to_bytes(MAGIC_LEN_BYTE + MSG_LEN_BYTE, "big"))
 
         dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
 
