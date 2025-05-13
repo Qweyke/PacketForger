@@ -1,139 +1,120 @@
 import socket
-from random import randrange
+import struct
 
-from bitarray import bitarray
-from bitarray.util import int2ba
-from scapy.layers.inet import IP, TCP
-from scapy.sendrecv import send, sniff
-
-from custom_logger import dpi_logger
-from session_info import Port, TcpFlag, MAGIC_SEQ, CRC8_FUNC, BYTE_LEN_IN_BITS, CRC_LEN_BYTE, MSG_LEN_BYTE, \
-    MAGIC_LEN_BYTE
-
-MAX_MSG_SIZE = (1 << 16) - 1
-LSB_MASK = int(~1)
+import select
 
 
-class StegoClient:
-    def __init__(self):
-        self._iface = None
-        self._curr_port = None
-        self._clt = None
-        self._srv = None
-        self._seq = None
-        self._ack = None
-        self._client_socket = None
-
-    def _build_init_seq(self, msg: str) -> int | None:
-        msg_len_in_bits = len(msg.encode("utf-8")) * BYTE_LEN_IN_BITS
-        dpi_logger.info(f"Preparing to transmit message '{msg}' of length {msg_len_in_bits} bit")
-
-        if msg_len_in_bits > MAX_MSG_SIZE:
-            dpi_logger.warning("Message is too long for one transmission. Aborting...")
-            return None
-
-        # Shift magic num bits to its place in first 8 bits
-        magic_masked = MAGIC_SEQ << (MSG_LEN_BYTE * BYTE_LEN_IN_BITS)
-        dpi_logger.debug(
-            f"Magic converted: {int2ba(magic_masked)}, len {len(int2ba(magic_masked))}. Magic initial: {int2ba(MAGIC_SEQ)}, len {len(int2ba(MAGIC_SEQ))}")
-
-        # Assemble first 8 and middle 16 bits
-        base_seq = magic_masked | msg_len_in_bits
-        # Calculate CRC for base sequence, no shift needed
-        crc_int = CRC8_FUNC(base_seq.to_bytes(MSG_LEN_BYTE + MAGIC_LEN_BYTE, "big"))
-
-        dpi_logger.debug(f"CRC: {crc_int}, bits {int2ba(crc_int)}, len {len(int2ba(crc_int))}")
-
-        # Assemble full init TCP sequence
-        full_seq = (base_seq << CRC_LEN_BYTE * BYTE_LEN_IN_BITS) | crc_int
-        dpi_logger.debug(f"Full seq: {full_seq}, bits: {int2ba(full_seq)}, len {len(int2ba(full_seq))}")
-
-        return full_seq
-
-    def _receive_init_syn_ack(self):
-        timeout = 3
-
-        def is_synack_reply(packet):
-            if (
-                    packet.haslayer(TCP)
-                    and packet.haslayer(IP)
-                    and packet[IP].src == self._srv
-                    and packet[IP].dst == self._clt
-                    and packet[TCP].sport == Port.HTTP.value
-                    and packet[TCP].dport == self._curr_port
-                    and packet[TCP].flags == (TcpFlag.SYN.value | TcpFlag.ACK.value)
-                    and packet[TCP].ack == self._seq + 1
-            ):
-                return True
-            return False
-
-        # Wait for server response
-        response = sniff(lfilter=is_synack_reply, count=1, timeout=timeout)
-
-        if response:
-            pkt = response[0]
-            dpi_logger.debug(f"Got SYN-ACK. SEQ = {pkt[TCP].seq}, ACK = {pkt[TCP].ack}")
-
-            self._seq += 1
-            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, ack=pkt[TCP].seq + 1,
-                        flags=TcpFlag.ACK.value)
-            ack_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
-            send(ack_pkt)
-            return True
-        else:
-            dpi_logger.error(f"ACK from server wasn't received after timeout '{timeout}' secs")
-            return False
-
-    def send_stego_msg(self, msg: str, clt_ip: str, srv_ip: str):
-        self._clt = clt_ip
-        self._srv = srv_ip
-        self._curr_port = randrange(49152, 65535)
-
-        # Создаём сокет и привязываем его к порту
-        self._client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            self._client_socket.bind((self._clt, self._curr_port))
-            dpi_logger.info(f"Client bound to {self._clt}:{self._curr_port}")
-        except Exception as e:
-            dpi_logger.error(f"Failed to bind client socket to {self._clt}:{self._curr_port}: {e}")
-            self._client_socket.close()
-            return
-
-        # Count msg len and transmit it as bit seq-s
-        init_seq = self._build_init_seq(msg)
-        if init_seq is None:
-            self._client_socket.close()
-            return
-
-        self._seq = init_seq
-        tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq, flags=TcpFlag.SYN.value)
-        init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
-        send(init_pkt)
-        dpi_logger.info("Sent SYN packet with init sequence")
-
-        if self._receive_init_syn_ack():
-            dpi_logger.info("Start transmission!")
-            bits_seq = bitarray()
-            bits_seq.frombytes(msg.encode("utf-8"))
-
-            for i, bit in enumerate(bits_seq):
-                self._seq += i * 2
-                if bit == 1:
-                    self._seq |= bit
-                else:
-                    self._seq &= ~1
-
-                tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=self._seq,
-                            flags=TcpFlag.PSH.value | TcpFlag.ACK.value)
-                init_pkt = IP(src=self._clt, dst=self._srv) / tcp_l
-                send(init_pkt)
-                dpi_logger.debug(f"Sent bit {bit} with seq {self._seq}")
-
-        self._client_socket.close()
-        dpi_logger.info("Client socket closed")
+# Функция для вычисления контрольной суммы (для TCP)
+def checksum(data):
+    s = 0
+    for i in range(0, len(data), 2):
+        w = (data[i] << 8) + (data[i + 1] if i + 1 < len(data) else 0)
+        s += w
+    s = (s >> 16) + (s & 0xffff)
+    s = ~s & 0xffff
+    return s
 
 
-if __name__ == "__main__":
-    clt = StegoClient()
-    clt.send_stego_msg("hi", clt_ip="192.168.12.106", srv_ip="192.168.12.4")
+# Параметры
+src_ip = "192.168.12.106"  # Твой IP
+dst_ip = "192.168.12.4"  # IP сервера (замени на реальный IP, например, "93.184.216.34")
+src_port = 122345  # Любой порт
+dst_port = 80  # Порт сервера
+seq_num = 1000  # Начальный sequence number
+
+# Создаем raw сокет
+s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+
+# Формируем IP-заголовок для SYN
+ip_ver_ihl = 0x45  # Версия 4, длина заголовка 20 байт
+ip_tos = 0
+ip_tot_len = 40  # IP header (20) + TCP header (20)
+ip_id = 54321
+ip_frag_off = 0
+ip_ttl = 64
+ip_proto = socket.IPPROTO_TCP
+ip_check = 0  # Ядро заполнит
+ip_saddr = socket.inet_aton(src_ip)
+ip_daddr = socket.inet_aton(dst_ip)
+
+ip_header = struct.pack('!BBHHHBBH4s4s',
+                        ip_ver_ihl, ip_tos, ip_tot_len, ip_id, ip_frag_off,
+                        ip_ttl, ip_proto, ip_check, ip_saddr, ip_daddr)
+
+# Формируем TCP SYN-заголовок
+tcp_src = src_port
+tcp_dst = dst_port
+tcp_seq = seq_num
+tcp_ack_seq = 0
+tcp_doff = 5  # Длина заголовка в 32-битных словах (5 * 4 = 20 байт)
+tcp_flags = 0x02  # SYN flag
+tcp_window = socket.htons(8192)
+tcp_check = 0
+tcp_urg_ptr = 0
+
+tcp_header = struct.pack('!HHLLBBHHH',
+                         tcp_src, tcp_dst, tcp_seq, tcp_ack_seq,
+                         (tcp_doff << 4), tcp_flags, tcp_window, tcp_check, tcp_urg_ptr)
+
+# Псевдозаголовок для контрольной суммы TCP
+pseudo_header = struct.pack('!4s4sBBH',
+                            ip_saddr, ip_daddr, 0, socket.IPPROTO_TCP, len(tcp_header))
+
+# Вычисляем контрольную сумму TCP
+tcp_check = checksum(pseudo_header + tcp_header)
+tcp_header = struct.pack('!HHLLBBHHH',
+                         tcp_src, tcp_dst, tcp_seq, tcp_ack_seq,
+                         (tcp_doff << 4), tcp_flags, tcp_window, tcp_check, tcp_urg_ptr)
+
+# Собираем и отправляем SYN-пакет
+packet = ip_header + tcp_header
+s.sendto(packet, (dst_ip, 0))
+
+# Создаем сокет для захвата SYN-ACK
+s_receive = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+s_receive.bind(('0.0.0.0', 0))
+
+# Ожидаем SYN-ACK
+while True:
+    readable, _, _ = select.select([s_receive], [], [], 5)
+    if readable:
+        data, addr = s_receive.recvfrom(65535)
+        # Распаковываем IP-заголовок
+        ip_header = data[:20]
+        iph = struct.unpack('!BBHHHBBH4s4s', ip_header)
+        ip_ihl = iph[0] & 0xF
+        ip_ihl_bytes = ip_ihl * 4
+
+        # Распаковываем TCP-заголовок
+        tcp_header = data[ip_ihl_bytes:ip_ihl_bytes + 20]
+        tcph = struct.unpack('!HHLLBBHHH', tcp_header)
+        if tcph[0] == dst_port and tcph[1] == src_port and tcph[5] == 0x12:  # SYN-ACK (flags = 0x12)
+            server_seq = tcph[3]
+            server_ack = tcph[4]
+            break
+
+# Формируем ACK-пакет
+tcp_seq = seq_num + 1
+tcp_ack_seq = server_seq + 1
+tcp_flags = 0x10  # ACK flag
+tcp_header = struct.pack('!HHLLBBHHH',
+                         tcp_src, tcp_dst, tcp_seq, tcp_ack_seq,
+                         (tcp_doff << 4), tcp_flags, tcp_window, 0, tcp_urg_ptr)
+
+pseudo_header = struct.pack('!4s4sBBH',
+                            ip_saddr, ip_daddr, 0, socket.IPPROTO_TCP, len(tcp_header))
+tcp_check = checksum(pseudo_header + tcp_header)
+tcp_header = struct.pack('!HHLLBBHHH',
+                         tcp_src, tcp_dst, tcp_seq, tcp_ack_seq,
+                         (tcp_doff << 4), tcp_flags, tcp_window, tcp_check, tcp_urg_ptr)
+
+# Собираем и отправляем ACK-пакет
+packet = ip_header + tcp_header
+s.sendto(packet, (dst_ip, 0))
+
+print("TCP handshake завершен!")
+
+# if __name__ == "__main__":
+#     clt = StegoClient()
+#     clt.send_stego_msg("hi", clt_ip="192.168.12.106", srv_ip="192.168.12.4")
