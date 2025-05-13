@@ -41,11 +41,12 @@ class TcpFlag(Enum):
     CWR = 0x80
 
 
-MSG_LEN_BYTE = 2
-TCP_SEQ_LEN_BYTE = 4
-CRC_LEN_BYTE = 1
+TCP_SEQ_BYTE_LEN = 32
+DATA_BYTE_LEN = 8
+INDEX_BYTE_LEN = 8
+CRC_BYTE_LEN = 8
 
-BYTE_LEN_IN_BITS = 8
+MSG_LENGTH_BYTE_LEN = 16
 
 CRC = bitarray("111010101")
 CRC_INT = ba2int(CRC)
@@ -53,7 +54,7 @@ CRC_INT = ba2int(CRC)
 
 
 MAGIC_SEQ = generate_magic_seq(1)
-MAGIC_LEN_BYTE = len(MAGIC_SEQ.to_bytes())
+MAGIC_BYTE_LEN = len(MAGIC_SEQ.to_bytes()) * 8
 
 CRC8_FUNC = crcmod.mkCrcFun(CRC_INT, initCrc=0x0, rev=False, xorOut=0x0)
 
