@@ -30,23 +30,13 @@ class Port(Enum):
     SSH = 22
 
 
-class TcpFlag(Enum):
-    FIN = 0x01
-    SYN = 0x02
-    RST = 0x04
-    PSH = 0x08
-    ACK = 0x10
-    URG = 0x20
-    ECE = 0x40
-    CWR = 0x80
-
-
 TCP_SEQ_BYTE_LEN = 32
-DATA_BYTE_LEN = 8
-INDEX_BYTE_LEN = 8
-CRC_BYTE_LEN = 8
 
 MSG_LENGTH_BYTE_LEN = 16
+BASE_BYTE_LEN = 16
+
+DATA_BYTE_LEN = 8
+CRC_BYTE_LEN = 8
 
 CRC = bitarray("111010101")
 CRC_INT = ba2int(CRC)
