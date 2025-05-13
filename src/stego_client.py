@@ -4,9 +4,9 @@ from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import send
 
 from custom_logger import dpi_logger
+from session_info import DATA_BYTE_LEN
 from session_info import Port, MAGIC_SEQ, CRC8_FUNC, \
     MAGIC_BYTE_LEN, MSG_LENGTH_BYTE_LEN, CRC_BYTE_LEN, BASE_BYTE_LEN
-from src.session_info import DATA_BYTE_LEN
 
 MAX_MSG_SIZE = (1 << 16) - 1
 LSB_MASK = int(~1)
@@ -29,6 +29,7 @@ class StegoClient:
             # Assemble packet
             init_pkt = ip_l / tcp_l
             send(init_pkt, verbose=False)
+            dpi_logger.debug(f"Packet with sequence {seq} sent")
 
         except Exception as ex:
             dpi_logger.error(f"Error while sending packet: {ex}")
@@ -48,12 +49,12 @@ class StegoClient:
             init_seq = (init_seq << CRC_BYTE_LEN) | crc
             self._send_packet(init_seq)
 
-        def build_data_chunk(data_byte: int, index: int):
+        def build_data_chunk(data_byte: int):
             # Shift magic byte to prepare space for index byte and append it
             start_bytes = randint(0, 0xFFFF)
 
             # Shift magic|index bytes to prepare space for data byte and append it
-            chunk = (start_bytes << BASE_BYTE_LEN) | data_byte
+            chunk = (start_bytes << DATA_BYTE_LEN) | data_byte
 
             # Build crc for magic|index|data bytes
             crc = CRC8_FUNC(chunk.to_bytes(BASE_BYTE_LEN + DATA_BYTE_LEN, "big"))
@@ -69,10 +70,10 @@ class StegoClient:
 
         for i, byte in enumerate(msg_bytes):
             # Build chunk for 1 byte of msg
-            encoded_seq = build_data_chunk(byte, i)
+            encoded_seq = build_data_chunk(byte)
             self._send_packet(encoded_seq)
 
-            dpi_logger.debug(f"Sent byte {byte} with seq {encoded_seq}")
+            dpi_logger.debug(f"Sent byte[{i}] '{byte}' with seq {encoded_seq}")
 
 
 if __name__ == "__main__":

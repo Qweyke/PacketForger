@@ -23,15 +23,6 @@ class StegoServer:
         self._transmission_active = False
         self._received_bytes = bytearray()
         self._num_bytes_to_receive = 0
-        # self._stego_active = False
-        # self._server_seq = randint(0, MAX_TCP_SEQ_NUM)
-        # self._msg_len = 0
-        # self._captured_bits = bitarray()
-        # self._packet_cnt = 0
-        # self._used_seqs = []
-        #
-        # self._clt_port = None
-        # self._server_socket = None
 
     def _check_for_transmission_request(self, seq_num):
 
