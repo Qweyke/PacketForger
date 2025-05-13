@@ -1,3 +1,4 @@
+import time
 from random import randrange, randint
 
 from scapy.layers.inet import IP, TCP
@@ -14,8 +15,6 @@ LSB_MASK = int(~1)
 
 class StegoClient:
     def __init__(self, clt_ip, srv_ip):
-        self._curr_port = randrange(49152, 65535)
-
         self._clt = clt_ip
         self._srv = srv_ip
 
@@ -23,7 +22,7 @@ class StegoClient:
         try:
             # Prepare lvl 2 layers
             ip_l = IP(src=self._clt, dst=self._srv)
-            tcp_l = TCP(sport=self._curr_port, dport=Port.HTTP.value, seq=seq,
+            tcp_l = TCP(sport=randrange(49152, 65535), dport=Port.HTTP.value, seq=seq,
                         flags="S")
 
             # Assemble packet
@@ -36,7 +35,7 @@ class StegoClient:
 
     def transmit_stego_msg(self, msg: str):
         def build_and_send_init_chunk():
-            msg_len_in_bits = len(msg.encode("utf-8")) * 8
+            msg_len_in_bits = len(msg.encode("utf-8"))
             if msg_len_in_bits > MAX_MSG_SIZE:
                 raise RuntimeError("Message is too long for one transmission. Aborting...")
 
@@ -71,6 +70,7 @@ class StegoClient:
         for i, byte in enumerate(msg_bytes):
             # Build chunk for 1 byte of msg
             encoded_seq = build_data_chunk(byte)
+            time.sleep(0.2)
             self._send_packet(encoded_seq)
 
             dpi_logger.debug(f"Sent byte[{i}] '{byte}' with seq {encoded_seq}")

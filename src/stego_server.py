@@ -17,8 +17,8 @@ DATA_SIZE_IN_BYTES = 2048
 
 class StegoServer:
     def __init__(self, clt_ip, srv_ip):
-        self._srv_ip = clt_ip
-        self._clt_ip = srv_ip
+        self._srv_ip = srv_ip
+        self._clt_ip = clt_ip
 
         self._transmission_active = False
         self._received_bytes = bytearray()
@@ -42,9 +42,8 @@ class StegoServer:
 
             return True
 
-        dpi_logger.debug(f"Sequence value: {seq_num}")
         if trans_start_inited():
-            data_len = (seq_num >> (TCP_SEQ_BYTE_LEN - MSG_LENGTH_BYTE_LEN)) & 0xFFFF
+            data_len = (seq_num >> CRC_BYTE_LEN) & 0xFFFF
             dpi_logger.warning(f"Hidden transmission detected. Receiving message of length {data_len}")
             self._num_bytes_to_receive = data_len
             self._transmission_active = True
@@ -72,9 +71,9 @@ class StegoServer:
 
     def _handle_stego_packet(self, packet: Packet):
         if packet.haslayer(TCP):
-            dpi_logger.debug("Received a packet")
-            tcp_layer = packet.getlayer(TCP)
-            tcp_seq = tcp_layer.seq
+            tcp_seq = packet[TCP].seq
+            dpi_logger.debug(f"Received a packet: {packet.summary()}")
+            dpi_logger.debug(f"TCP sequence: {tcp_seq}")
 
             if self._transmission_active:
                 self._handle_data_in_packet(tcp_seq)
