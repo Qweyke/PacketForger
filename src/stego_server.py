@@ -9,11 +9,6 @@ from session_info import Port, MAGIC_SEQ, search_for_ifaces, CRC8_FUNC, TCP_SEQ_
 
 conf.debug_dissector = 2
 
-# 2^32 - 1
-MAX_TCP_SEQ_NUM = (1 << 32) - 1
-
-DATA_SIZE_IN_BYTES = 2048
-
 
 class StegoServer:
     def __init__(self, clt_ip, srv_ip):
@@ -23,6 +18,7 @@ class StegoServer:
         self._transmission_active = False
         self._received_bytes = bytearray()
         self._num_bytes_to_receive = 0
+        self._timeout_sec = 3
 
     def _check_for_transmission_request(self, seq_num):
 

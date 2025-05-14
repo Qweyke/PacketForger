@@ -40,8 +40,6 @@ CRC_BYTE_LEN = 8
 
 CRC = bitarray("111010101")
 CRC_INT = ba2int(CRC)
-# Must be changed for diff CRC type
-
 
 MAGIC_SEQ = generate_magic_seq(1)
 MAGIC_BYTE_LEN = len(MAGIC_SEQ.to_bytes()) * 8

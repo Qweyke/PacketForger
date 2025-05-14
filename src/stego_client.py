@@ -1,5 +1,5 @@
 import time
-from random import randrange, randint
+from random import randrange, randint, uniform
 
 from scapy.layers.inet import IP, TCP
 from scapy.sendrecv import send
@@ -10,7 +10,6 @@ from session_info import Port, MAGIC_SEQ, CRC8_FUNC, \
     MAGIC_BYTE_LEN, MSG_LENGTH_BYTE_LEN, CRC_BYTE_LEN, BASE_BYTE_LEN
 
 MAX_MSG_SIZE = (1 << 16) - 1
-LSB_MASK = int(~1)
 
 
 class StegoClient:
@@ -70,7 +69,7 @@ class StegoClient:
         for i, byte in enumerate(msg_bytes):
             # Build chunk for 1 byte of msg
             encoded_seq = build_data_chunk(byte)
-            time.sleep(0.2)
+            time.sleep(uniform(0.1, 0.4))
             self._send_packet(encoded_seq)
 
             dpi_logger.debug(f"Sent byte[{i}] '{byte}' with seq {encoded_seq}")
@@ -78,4 +77,4 @@ class StegoClient:
 
 if __name__ == "__main__":
     clt = StegoClient(clt_ip="192.168.12.106", srv_ip="192.168.12.4")
-    clt.transmit_stego_msg("hi")
+    clt.transmit_stego_msg("Hello world!")
