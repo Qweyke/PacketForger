@@ -16,21 +16,9 @@ class DpiLogger(logging.Logger):
     def __init__(self, name: str, level=logging.NOTSET):
         super().__init__(name=name, level=level)
 
-    def packet(self, msg, sub_lvl=None, *args, **kwargs):
-        # extra = kwargs.get("extra", {})
-        # extra["sub_lvl"] = sub_lvl if sub_lvl else "-"
-        # kwargs["extra"] = extra
-
+    def packet(self, msg, *args, **kwargs):
         if self.isEnabledFor(PACKET_LEVEL):
             self._log(PACKET_LEVEL, msg, args, **kwargs)
-
-    def info(self, msg, sub_lvl=None, *args, **kwargs):
-        # extra = kwargs.get("extra", {})
-        # extra["sub_lvl"] = sub_lvl if sub_lvl else "-"
-        # kwargs["extra"] = extra
-
-        if self.isEnabledFor(logging.INFO):
-            self._log(logging.INFO, msg, args, **kwargs)
 
 
 class ColorFormatter(logging.Formatter):
