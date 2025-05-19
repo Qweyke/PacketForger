@@ -76,5 +76,5 @@ class StegoClient:
 
 
 if __name__ == "__main__":
-    clt = StegoClient(clt_ip="192.168.12.106", srv_ip="192.168.12.4")
+    clt = StegoClient(clt_ip="192.168.133.105", srv_ip="192.168.133.18")
     clt.transmit_stego_msg("Hello world!")
