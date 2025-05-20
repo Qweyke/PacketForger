@@ -100,5 +100,5 @@ class StegoServer:
 
 
 if __name__ == "__main__":
-    srv = StegoServer(clt_ip="192.168.133.105", srv_ip="192.168.133.18")
+    srv = StegoServer(clt_ip="192.168.12.106", srv_ip="192.168.12.4")
     srv.start_sniffing()

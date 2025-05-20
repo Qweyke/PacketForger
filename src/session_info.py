@@ -49,34 +49,42 @@ CRC8_FUNC = crcmod.mkCrcFun(CRC_INT, initCrc=0x0, rev=False, xorOut=0x0)
 
 def search_for_ifaces():
     iface_list = []
+
     if platform.system() == "Windows":
         from scapy.arch.windows import get_windows_if_list
         interfaces = get_windows_if_list()
-        for i, iface in enumerate(interfaces):
-            ips = iface.get('ips', [])
-            mac = iface.get('mac', None)
-            if ips and mac and len(ips) > 0:
-                dpi_logger.info(f"[{i}] {iface.get('name', 'N/A')}")
-                dpi_logger.info(f"{iface.get('description', 'N/A')}")
-                for ip in ips:
-                    dpi_logger.info(ip, sub_lvl="IP")
-                dpi_logger.info(f"{mac if mac else 'N/A'}", sub_lvl="MAC")
-                dpi_logger.info(f"{iface.get('guid', 'N/A')}", sub_lvl="GUID")
-                iface_list.append(iface)
-                dpi_logger.info("---------------------------------------------")
 
+        filtered_interfaces = [
+            iface for iface in interfaces if iface.get('ips') and iface.get('mac')
+        ]
+
+        for i, iface in enumerate(filtered_interfaces):
+            dpi_logger.info(f"[{i}] {iface.get('name', 'N/A')}")
+            dpi_logger.info(f"{iface.get('description', 'N/A')}")
+            for ip in iface.get('ips', []):
+                dpi_logger.info(ip, sub_lvl="IP")
+            dpi_logger.info(f"{iface.get('mac', 'N/A')}", sub_lvl="MAC")
+            dpi_logger.info(f"{iface.get('guid', 'N/A')}", sub_lvl="GUID")
+            dpi_logger.info("---------------------------------------------")
+            iface_list.append(iface)
+
+        dpi_logger.info("Enter interface number to sniff: ")
+        iface_num_inp = input().strip()
+        iface_to_return = iface_list[int(iface_num_inp)].get("name")
 
     else:
         from scapy.interfaces import get_if_list
         interfaces = get_if_list()
-        for i, iface in enumerate(interfaces):
+
+        filtered_interfaces = [iface for iface in interfaces if iface != "lo"]
+
+        for i, iface in enumerate(filtered_interfaces):
             dpi_logger.info(f"[{i}] Interface: {iface}")
             iface_list.append(iface)
 
-    dpi_logger.info("Enter interface number to sniff: ")
-    iface_num_inp = input().strip()
-    iface_to_return = iface_list[int(iface_num_inp)].get("name") if platform.system() == "Windows" else iface_list[
-        int(iface_num_inp)]
+        dpi_logger.info("Enter interface number to sniff: ")
+        iface_num_inp = input().strip()
+        iface_to_return = iface_list[int(iface_num_inp)]
 
     return iface_to_return
 
